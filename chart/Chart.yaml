@@ -1,0 +1,6 @@
+apiVersion: v2
+name: agent-sandbox
+description: Agent Sandbox POC — isolated OpenCode sessions per user
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

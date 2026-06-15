@@ -1,0 +1,14 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "agent-sandbox.fullname" . }}-session-manager
+  labels:
+    {{- include "agent-sandbox.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "agent-sandbox.fullname" . }}-session-manager
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "agent-sandbox.fullname" . }}
+    namespace: {{ .Release.Namespace }}

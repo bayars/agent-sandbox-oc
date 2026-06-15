@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agent-sandbox.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-sandbox.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "agent-sandbox.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "agent-sandbox.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "agent-sandbox.fullname" . }}
+      containers:
+        - name: api
+          image: {{ .Values.image.api }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DATABASE_URL
+              value: {{ include "agent-sandbox.dbUrl" . | quote }}
+            - name: OLLAMA_BASE_URL
+              value: {{ .Values.ollama.baseURL | quote }}
+            - name: OPENCODE_IMAGE
+              value: {{ .Values.opencode.image | quote }}
+            - name: POD_READY_TIMEOUT
+              value: {{ .Values.opencode.podReadyTimeout | quote }}
+            - name: HEALTH_CHECK_TIMEOUT
+              value: {{ .Values.opencode.healthCheckTimeout | quote }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /api/sessions
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /api/sessions
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10

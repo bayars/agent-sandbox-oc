@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "agent-sandbox.fullname" . }}-opencode-template
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-sandbox.labels" . | nindent 4 }}
+data:
+  opencode.json: |
+    {
+      "$schema": "https://opencode.ai/config.json",
+      "model": "ollama/qwen2.5:1.5b",
+      "provider": {
+        "ollama": {
+          "npm": "@ai-sdk/openai-compatible",
+          "name": "Ollama",
+          "options": { "baseURL": "{{ .Values.ollama.baseURL }}" },
+          "models": { "qwen2.5:1.5b": { "name": "Qwen 3 8B" } }
+        }
+      },
+      "agent": {
+        "storyteller": {
+          "description": "Expert storytelling AI",
+          "model": "ollama/qwen2.5:1.5b",
+          "system": "You are a master storyteller. Craft vivid, engaging narratives with compelling characters, rich world-building, and satisfying story arcs. Adapt your style to match the user request — epic fantasy, dark thriller, sci-fi, children's tale — and always write in flowing prose, never bullet points."
+        }
+      }
+    }

@@ -1,0 +1,40 @@
+image:
+  api: agent-sandbox-api:latest
+  opencode: opencode-sandbox:latest
+  pullPolicy: Never  # images are loaded via kind load
+
+replicaCount: 1
+
+service:
+  port: 8080
+
+gateway:
+  name: agent-sandbox-gw
+  listenerPort: 8000   # must match Traefik's internal 'web' entrypoint port
+  className: traefik
+
+httproute:
+  hostnames: []  # empty = match all hosts
+
+ollama:
+  baseURL: "http://10.0.0.224:11434/v1"
+
+opencode:
+  image: opencode-sandbox:latest
+  podReadyTimeout: "120"
+  healthCheckTimeout: "60"
+
+postgresql:
+  image: postgres:16-alpine
+  auth:
+    database: agent_sandbox
+    username: sandbox
+    password: sandbox123
+
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"

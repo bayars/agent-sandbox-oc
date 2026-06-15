@@ -1,0 +1,20 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y curl --no-install-recommends && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY opencode /usr/local/bin/opencode
+RUN chmod +x /usr/local/bin/opencode
+
+COPY opencode-node_modules/ /root/.opencode/node_modules/
+
+ENV OPENCODE_DISABLE_AUTOUPDATE=1
+ENV HOME=/root
+
+EXPOSE 4096
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=6 \
+    CMD curl -sf http://localhost:4096/global/health || exit 1
+
+CMD ["opencode", "serve", "--port", "4096", "--hostname", "0.0.0.0"]
