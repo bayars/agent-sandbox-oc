@@ -9,33 +9,40 @@ OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://10.0.0.224:11434/v1"
 
 OPENCODE_IMAGE: str = os.getenv("OPENCODE_IMAGE", "opencode-sandbox:latest")
 
-# Timeout (seconds) waiting for pod Running + OpenCode /global/health
-POD_READY_TIMEOUT: int = int(os.getenv("POD_READY_TIMEOUT", "120"))
-HEALTH_CHECK_TIMEOUT: int = int(os.getenv("HEALTH_CHECK_TIMEOUT", "60"))
+# Namespace where Sandbox CRs (and their pods/services) live
+SANDBOX_NAMESPACE: str = os.getenv("SANDBOX_NAMESPACE", "agent-sandbox")
 
-# opencode.json config template injected into each session ConfigMap.
-# The OLLAMA_BASE_URL is substituted at session creation time.
+# Name of the SandboxWarmPool to claim from
+SANDBOX_WARM_POOL: str = os.getenv("SANDBOX_WARM_POOL", "opencode-warmpool")
+
+# Seconds to wait for a Sandbox to reach Ready condition
+SANDBOX_READY_TIMEOUT: int = int(os.getenv("SANDBOX_READY_TIMEOUT", "120"))
+
+# opencode.json embedded in the shared ConfigMap (SandboxTemplate mounts it)
+OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "nemotron-3-nano:4b")
+
 OPENCODE_CONFIG_TEMPLATE = """\
 {{
   "$schema": "https://opencode.ai/config.json",
-  "model": "ollama/qwen2.5:1.5b",
+  "model": "ollama/{ollama_model}",
   "provider": {{
     "ollama": {{
       "npm": "@ai-sdk/openai-compatible",
       "name": "Ollama",
       "options": {{ "baseURL": "{ollama_base_url}" }},
-      "models": {{ "qwen2.5:1.5b": {{ "name": "Qwen 3 8B" }} }}
+      "models": {{ "{ollama_model}": {{ "name": "{ollama_model}" }} }}
     }}
   }},
   "agent": {{
     "storyteller": {{
-      "description": "Expert storytelling AI",
-      "model": "ollama/qwen2.5:1.5b",
-      "system": "You are a master storyteller. Craft vivid, engaging narratives with compelling characters, rich world-building, and satisfying story arcs. Adapt your style to match the user request — epic fantasy, dark thriller, sci-fi, children's tale — and always write in flowing prose, never bullet points."
+      "description": "Coding and storytelling assistant with filesystem access",
+      "model": "ollama/{ollama_model}",
+      "tools": {{ "bash": true, "read": true, "write": true, "edit": true }},
+      "system": "You are a helpful assistant running inside a sandbox with full access to the /workspace directory. You have bash, file read, write, and edit tools. When the user asks about files or directories, use the bash tool to run commands like 'ls', 'cat', 'find', etc. — never say you cannot access the filesystem. Always use your tools to provide accurate, real information."
     }}
   }}
 }}"""
 
 
 def get_opencode_config() -> str:
-    return OPENCODE_CONFIG_TEMPLATE.format(ollama_base_url=OLLAMA_BASE_URL)
+    return OPENCODE_CONFIG_TEMPLATE.format(ollama_base_url=OLLAMA_BASE_URL, ollama_model=OLLAMA_MODEL)

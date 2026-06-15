@@ -1,0 +1,53 @@
+apiVersion: extensions.agents.x-k8s.io/v1alpha1
+kind: SandboxTemplate
+metadata:
+  name: opencode-template
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-sandbox.labels" . | nindent 4 }}
+spec:
+  service: true
+  networkPolicyManagement: Unmanaged
+  volumeClaimTemplates:
+    - metadata:
+        name: workspace
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ .Values.opencode.workspace.storageClass | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.opencode.workspace.size | quote }}
+  podTemplate:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: opencode
+          image: {{ .Values.opencode.image }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 4096
+          workingDir: /app
+          volumeMounts:
+            - name: config
+              mountPath: /app/opencode.json
+              subPath: opencode.json
+            - name: workspace
+              mountPath: /workspace
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "1000m"
+          readinessProbe:
+            httpGet:
+              path: /global/health
+              port: 4096
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 24
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "agent-sandbox.fullname" . }}-opencode-template

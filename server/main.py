@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from server import db
-from server.routes import sessions, chat
+from server.routes import sessions, chat, files
 
 FRONTEND = Path(__file__).parent.parent / "frontend"
 
@@ -29,6 +29,7 @@ app.add_middleware(
 
 app.include_router(sessions.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
+app.include_router(files.router, prefix="/api")
 
 
 @app.get("/")

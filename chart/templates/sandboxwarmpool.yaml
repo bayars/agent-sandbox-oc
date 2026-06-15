@@ -1,0 +1,11 @@
+apiVersion: extensions.agents.x-k8s.io/v1alpha1
+kind: SandboxWarmPool
+metadata:
+  name: {{ .Values.opencode.warmPool.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-sandbox.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.opencode.warmPool.replicas }}
+  sandboxTemplateRef:
+    name: opencode-template

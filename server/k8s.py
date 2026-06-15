@@ -5,9 +5,17 @@ from typing import AsyncGenerator
 import httpx
 from kubernetes import client as k8s_client, config as k8s_config
 
-from server.config import OPENCODE_IMAGE, POD_READY_TIMEOUT, HEALTH_CHECK_TIMEOUT, get_opencode_config
+from server.config import SANDBOX_NAMESPACE, SANDBOX_WARM_POOL, SANDBOX_READY_TIMEOUT
 
 _k8s_loaded = False
+
+SANDBOX_GROUP = "agents.x-k8s.io"
+SANDBOX_VERSION = "v1alpha1"
+SANDBOX_PLURAL = "sandboxes"
+
+CLAIM_GROUP = "extensions.agents.x-k8s.io"
+CLAIM_VERSION = "v1alpha1"
+CLAIM_PLURAL = "sandboxclaims"
 
 
 def _load_k8s():
@@ -16,9 +24,13 @@ def _load_k8s():
         try:
             k8s_config.load_incluster_config()
         except k8s_config.ConfigException:
-            # Fallback for local dev
             k8s_config.load_kube_config(context="kind-gateway-lab")
         _k8s_loaded = True
+
+
+def _custom() -> k8s_client.CustomObjectsApi:
+    _load_k8s()
+    return k8s_client.CustomObjectsApi()
 
 
 def _core() -> k8s_client.CoreV1Api:
@@ -26,148 +38,124 @@ def _core() -> k8s_client.CoreV1Api:
     return k8s_client.CoreV1Api()
 
 
-def _ns_name(session_id: str) -> str:
+def _sandbox_name(session_id: str) -> str:
     return f"session-{session_id}"
 
 
 async def create_session_resources(session_id: str) -> AsyncGenerator[str, None]:
-    ns = _ns_name(session_id)
-    v1 = _core()
+    name = _sandbox_name(session_id)
+    custom = _custom()
 
-    # 1. Namespace
-    yield f"Creating namespace {ns}..."
+    # 1. Create SandboxClaim — controller fulfils it instantly from the WarmPool
+    yield "Claiming sandbox from warm pool..."
     await asyncio.to_thread(
-        v1.create_namespace,
-        k8s_client.V1Namespace(
-            metadata=k8s_client.V1ObjectMeta(
-                name=ns,
-                labels={"app": "agent-sandbox", "session": session_id},
-            )
-        ),
+        custom.create_namespaced_custom_object,
+        CLAIM_GROUP, CLAIM_VERSION, SANDBOX_NAMESPACE, CLAIM_PLURAL,
+        {
+            "apiVersion": f"{CLAIM_GROUP}/{CLAIM_VERSION}",
+            "kind": "SandboxClaim",
+            "metadata": {"name": name, "namespace": SANDBOX_NAMESPACE},
+            "spec": {
+                "sandboxTemplateRef": {"name": "opencode-template"},
+                "warmpool": SANDBOX_WARM_POOL,
+            },
+        },
     )
 
-    # 2. ConfigMap
-    yield "Uploading storyteller config..."
-    await asyncio.to_thread(
-        v1.create_namespaced_config_map,
-        ns,
-        k8s_client.V1ConfigMap(
-            metadata=k8s_client.V1ObjectMeta(name="opencode-config", namespace=ns),
-            data={"opencode.json": get_opencode_config()},
-        ),
-    )
+    # 2. Wait for the SandboxClaim to be fulfilled (Sandbox name populated)
+    yield "Waiting for sandbox to be adopted..."
+    deadline = time.time() + SANDBOX_READY_TIMEOUT
+    sandbox_name = None
 
-    # 3. Pod
-    yield "Launching OpenCode pod..."
-    pod_spec = k8s_client.V1PodSpec(
-        restart_policy="Never",
-        containers=[
-            k8s_client.V1Container(
-                name="opencode",
-                image=OPENCODE_IMAGE,
-                image_pull_policy="Never",
-                ports=[k8s_client.V1ContainerPort(container_port=4096)],
-                working_dir="/app",
-                volume_mounts=[
-                    k8s_client.V1VolumeMount(
-                        name="config",
-                        mount_path="/app/opencode.json",
-                        sub_path="opencode.json",
-                    )
-                ],
-                resources=k8s_client.V1ResourceRequirements(
-                    requests={"memory": "128Mi", "cpu": "100m"},
-                    limits={"memory": "512Mi", "cpu": "1000m"},
-                ),
-            )
-        ],
-        volumes=[
-            k8s_client.V1Volume(
-                name="config",
-                config_map=k8s_client.V1ConfigMapVolumeSource(name="opencode-config"),
-            )
-        ],
-    )
-    await asyncio.to_thread(
-        v1.create_namespaced_pod,
-        ns,
-        k8s_client.V1Pod(
-            metadata=k8s_client.V1ObjectMeta(
-                name="opencode",
-                namespace=ns,
-                labels={"app": "opencode", "session": session_id},
-            ),
-            spec=pod_spec,
-        ),
-    )
-
-    # 4. ClusterIP service (internal only)
-    yield "Creating internal service..."
-    await asyncio.to_thread(
-        v1.create_namespaced_service,
-        ns,
-        k8s_client.V1Service(
-            metadata=k8s_client.V1ObjectMeta(name="opencode-svc", namespace=ns),
-            spec=k8s_client.V1ServiceSpec(
-                type="ClusterIP",
-                selector={"app": "opencode", "session": session_id},
-                ports=[k8s_client.V1ServicePort(port=4096, target_port=4096)],
-            ),
-        ),
-    )
-
-    # 5. Wait for pod Running
-    yield "Waiting for pod to start..."
-    deadline = time.time() + POD_READY_TIMEOUT
-    last_phase = ""
     while time.time() < deadline:
-        pod = await asyncio.to_thread(v1.read_namespaced_pod, "opencode", ns)
-        phase = pod.status.phase or "Unknown"
-        if phase != last_phase:
-            yield f"Pod phase: {phase}..."
-            last_phase = phase
-        if phase == "Running":
+        claim = await asyncio.to_thread(
+            custom.get_namespaced_custom_object,
+            CLAIM_GROUP, CLAIM_VERSION, SANDBOX_NAMESPACE, CLAIM_PLURAL, name,
+        )
+        sandbox_ref = claim.get("status", {}).get("sandbox", {})
+        if sandbox_ref.get("name"):
+            sandbox_name = sandbox_ref["name"]
             break
-        if phase in ("Failed", "Succeeded"):
-            raise RuntimeError(f"Pod entered terminal phase: {phase}")
-        await asyncio.sleep(2)
+        await asyncio.sleep(1)
     else:
-        raise TimeoutError(f"Pod did not reach Running within {POD_READY_TIMEOUT}s")
+        raise TimeoutError("SandboxClaim was not fulfilled within timeout")
 
-    # 6. Wait for OpenCode /global/health
-    yield "Verifying OpenCode API health..."
-    svc_url = f"http://opencode-svc.{ns}.svc.cluster.local:4096"
-    deadline = time.time() + HEALTH_CHECK_TIMEOUT
-    async with httpx.AsyncClient(timeout=5) as http:
-        while time.time() < deadline:
-            try:
-                r = await http.get(f"{svc_url}/global/health")
-                if r.status_code == 200:
-                    yield "OpenCode is ready."
-                    return
-            except Exception:
-                pass
-            await asyncio.sleep(2)
-    raise TimeoutError(f"OpenCode did not respond to health check within {HEALTH_CHECK_TIMEOUT}s")
+    # 3. Wait for Sandbox Ready condition
+    while time.time() < deadline:
+        sandbox = await asyncio.to_thread(
+            custom.get_namespaced_custom_object,
+            SANDBOX_GROUP, SANDBOX_VERSION, SANDBOX_NAMESPACE, SANDBOX_PLURAL, sandbox_name,
+        )
+        conditions = sandbox.get("status", {}).get("conditions", [])
+        ready = next((c for c in conditions if c.get("type") == "Ready"), None)
+        if ready and ready.get("status") == "True":
+            # Label the sandbox so it's identifiable as belonging to this session
+            await asyncio.to_thread(
+                custom.patch_namespaced_custom_object,
+                SANDBOX_GROUP, SANDBOX_VERSION, SANDBOX_NAMESPACE, SANDBOX_PLURAL, sandbox_name,
+                {"metadata": {"labels": {"agent-sandbox-poc/session": session_id}}},
+            )
+            yield f"Sandbox {sandbox_name} is ready."
+            return
+        await asyncio.sleep(2)
 
-
-async def delete_session_namespace(session_id: str) -> None:
-    ns = _ns_name(session_id)
-    v1 = _core()
-    await asyncio.to_thread(
-        v1.delete_namespace,
-        ns,
-        body=k8s_client.V1DeleteOptions(propagation_policy="Foreground"),
-    )
+    raise TimeoutError(f"Sandbox did not reach Ready within {SANDBOX_READY_TIMEOUT}s")
 
 
-async def get_pod_phase(session_id: str) -> str:
-    ns = _ns_name(session_id)
-    v1 = _core()
+async def get_sandbox_name_for_claim(session_id: str) -> str | None:
+    """Return the Sandbox name adopted by the SandboxClaim for this session."""
+    name = _sandbox_name(session_id)
+    custom = _custom()
     try:
-        pod = await asyncio.to_thread(v1.read_namespaced_pod, "opencode", ns)
-        return pod.status.phase or "Unknown"
+        claim = await asyncio.to_thread(
+            custom.get_namespaced_custom_object,
+            CLAIM_GROUP, CLAIM_VERSION, SANDBOX_NAMESPACE, CLAIM_PLURAL, name,
+        )
+        return claim.get("status", {}).get("sandbox", {}).get("name")
+    except k8s_client.exceptions.ApiException:
+        return None
+
+
+async def get_sandbox_pod_name(sandbox_name: str) -> str | None:
+    """Return the pod name from the Sandbox annotation (needed for exec/VFS)."""
+    custom = _custom()
+    try:
+        sandbox = await asyncio.to_thread(
+            custom.get_namespaced_custom_object,
+            SANDBOX_GROUP, SANDBOX_VERSION, SANDBOX_NAMESPACE, SANDBOX_PLURAL, sandbox_name,
+        )
+        return sandbox.get("metadata", {}).get("annotations", {}).get("agents.x-k8s.io/pod-name")
+    except k8s_client.exceptions.ApiException:
+        return None
+
+
+async def delete_session_claim(session_id: str) -> None:
+    name = _sandbox_name(session_id)
+    custom = _custom()
+    try:
+        await asyncio.to_thread(
+            custom.delete_namespaced_custom_object,
+            CLAIM_GROUP, CLAIM_VERSION, SANDBOX_NAMESPACE, CLAIM_PLURAL, name,
+        )
     except k8s_client.exceptions.ApiException as e:
-        if e.status == 404:
-            return "NotFound"
-        return "Unknown"
+        if e.status != 404:
+            raise
+
+
+async def get_sandbox_phase(sandbox_name: str | None) -> str:
+    """Return human-readable status for a Sandbox by its actual name."""
+    if not sandbox_name:
+        return "NotFound"
+    custom = _custom()
+    try:
+        sandbox = await asyncio.to_thread(
+            custom.get_namespaced_custom_object,
+            SANDBOX_GROUP, SANDBOX_VERSION, SANDBOX_NAMESPACE, SANDBOX_PLURAL, sandbox_name,
+        )
+        conditions = sandbox.get("status", {}).get("conditions", [])
+        ready = next((c for c in conditions if c.get("type") == "Ready"), None)
+        if ready:
+            return "Ready" if ready.get("status") == "True" else "NotReady"
+        return "Pending"
+    except k8s_client.exceptions.ApiException:
+        return "NotFound"

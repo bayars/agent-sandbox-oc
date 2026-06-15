@@ -18,11 +18,17 @@ httproute:
 
 ollama:
   baseURL: "http://10.0.0.224:11434/v1"
+  model: "nemotron-3-nano:4b"
 
 opencode:
   image: opencode-sandbox:latest
-  podReadyTimeout: "120"
-  healthCheckTimeout: "60"
+  sandboxReadyTimeout: "120"
+  warmPool:
+    name: opencode-warmpool
+    replicas: 2
+  workspace:
+    storageClass: "standard"
+    size: "1Gi"
 
 postgresql:
   image: postgres:16-alpine

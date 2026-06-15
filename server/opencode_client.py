@@ -6,9 +6,10 @@ import httpx
 
 
 class OpenCodeClient:
-    def __init__(self, session_id: str):
-        ns = f"session-{session_id}"
-        self.base = f"http://opencode-svc.{ns}.svc.cluster.local:4096"
+    def __init__(self, sandbox_name: str):
+        from server.config import SANDBOX_NAMESPACE
+        # Use the Sandbox's own service FQDN (headless service resolves to pod IP)
+        self.base = f"http://{sandbox_name}.{SANDBOX_NAMESPACE}.svc.cluster.local:4096"
 
     async def health(self) -> bool:
         async with httpx.AsyncClient(timeout=5) as http:

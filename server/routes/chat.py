@@ -29,7 +29,11 @@ async def chat(session_id: str, req: ChatRequest):
 
     async def event_stream() -> AsyncGenerator[str, None]:
         try:
-            oc = OpenCodeClient(session_id)
+            sandbox_name = session.get("sandbox_name")
+            if not sandbox_name:
+                yield _sse("error", msg="Session has no sandbox assigned")
+                return
+            oc = OpenCodeClient(sandbox_name)
 
             oc_session_id = session.get("oc_session")
             if not oc_session_id:

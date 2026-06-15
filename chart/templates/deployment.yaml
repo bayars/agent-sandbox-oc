@@ -27,12 +27,16 @@ spec:
               value: {{ include "agent-sandbox.dbUrl" . | quote }}
             - name: OLLAMA_BASE_URL
               value: {{ .Values.ollama.baseURL | quote }}
+            - name: OLLAMA_MODEL
+              value: {{ .Values.ollama.model | quote }}
             - name: OPENCODE_IMAGE
               value: {{ .Values.opencode.image | quote }}
-            - name: POD_READY_TIMEOUT
-              value: {{ .Values.opencode.podReadyTimeout | quote }}
-            - name: HEALTH_CHECK_TIMEOUT
-              value: {{ .Values.opencode.healthCheckTimeout | quote }}
+            - name: SANDBOX_NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: SANDBOX_WARM_POOL
+              value: {{ .Values.opencode.warmPool.name | quote }}
+            - name: SANDBOX_READY_TIMEOUT
+              value: {{ .Values.opencode.sandboxReadyTimeout | quote }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           livenessProbe:

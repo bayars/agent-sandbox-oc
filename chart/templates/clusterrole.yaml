@@ -5,9 +5,18 @@ metadata:
   labels:
     {{- include "agent-sandbox.labels" . | nindent 4 }}
 rules:
-  - apiGroups: [""]
-    resources: ["namespaces"]
-    verbs: ["get", "list", "create", "delete"]
-  - apiGroups: [""]
-    resources: ["pods", "services", "configmaps"]
+  # Manage SandboxClaims (one per user session)
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxclaims"]
     verbs: ["get", "list", "create", "delete", "watch"]
+  # Read and label Sandbox resources
+  - apiGroups: ["agents.x-k8s.io"]
+    resources: ["sandboxes"]
+    verbs: ["get", "list", "watch", "patch"]
+  # Exec into sandbox pods for VFS file operations
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["get", "create"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
