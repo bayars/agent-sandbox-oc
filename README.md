@@ -6,7 +6,7 @@ A proof-of-concept that deploys isolated [OpenCode](https://opencode.ai) harness
 
 https://github.com/user-attachments/assets/agent-sandbox-with-oc.mp4
 
-> **Recording:** `agent-sandbox-with-oc.mp4` — session creation with live SSE progress stream and interactive storyteller chat.
+> To embed: drag `agent-sandbox-demo.mp4` into any GitHub issue or PR comment box → copy the generated URL and replace the placeholder above.
 
 ---
 
