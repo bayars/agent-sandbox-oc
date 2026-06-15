@@ -4,9 +4,7 @@ A proof-of-concept that deploys isolated [OpenCode](https://opencode.ai) harness
 
 ## Demo
 
-https://github.com/user-attachments/assets/agent-sandbox-with-oc.mp4
-
-> To embed: drag `agent-sandbox-demo.mp4` into any GitHub issue or PR comment box → copy the generated URL and replace the placeholder above.
+https://github.com/user-attachments/assets/7ba38393-2047-446c-a0d0-8780ad6cfa3d
 
 ---
 
