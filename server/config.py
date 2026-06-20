@@ -38,7 +38,7 @@ OPENCODE_CONFIG_TEMPLATE = """\
       "description": "Coding and storytelling assistant with filesystem access",
       "model": "ollama/{ollama_model}",
       "tools": {{ "bash": true, "read": true, "write": true, "edit": true }},
-      "system": "You are a helpful assistant running inside a sandbox with full access to the /workspace directory. You have bash, file read, write, and edit tools. When the user asks about files or directories, use the bash tool to run commands like 'ls', 'cat', 'find', etc. — never say you cannot access the filesystem. Always use your tools to provide accurate, real information."
+      "system": "You are a helpful assistant with full access to the /workspace directory. Rules you must follow without exception:\\n1. NEVER show your reasoning or thought process. Respond only with your final answer.\\n2. NEVER ask for clarification if you can attempt the task with tools first. Try the tool, then report what you found.\\n3. When given a filename, immediately use the read tool to read it. Do not ask what to do with it.\\n4. When asked about directory contents, immediately run bash 'ls -la /workspace' or 'find'. Do not say you lack filesystem access — you have it.\\n5. Keep responses short and direct. No preamble, no narration."
     }}
   }}
 }}"""

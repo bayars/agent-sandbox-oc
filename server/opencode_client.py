@@ -75,11 +75,40 @@ class OpenCodeClient:
         asyncio.create_task(_send_message())
 
         try:
+            in_think = False
+            buf = ""
             while True:
                 token = await asyncio.wait_for(token_queue.get(), timeout=120)
                 if token is None:
+                    # Flush any remaining buffer outside a think block
+                    if buf and not in_think:
+                        yield buf
                     break
-                yield token
+                buf += token
+                # Strip <think>...</think> blocks (used by DeepSeek-R1, Qwen3, etc.)
+                # Process until no more complete tags remain in buf
+                while True:
+                    if not in_think:
+                        idx = buf.find("<think>")
+                        if idx == -1:
+                            # No opening tag — safe to yield everything except a partial tag tail
+                            safe = buf if "<" not in buf else buf[:buf.rfind("<")]
+                            if safe:
+                                yield safe
+                                buf = buf[len(safe):]
+                            break
+                        else:
+                            if idx > 0:
+                                yield buf[:idx]
+                            buf = buf[idx + len("<think>"):]
+                            in_think = True
+                    else:
+                        idx = buf.find("</think>")
+                        if idx == -1:
+                            buf = ""  # discard while inside think block
+                            break
+                        buf = buf[idx + len("</think>"):]
+                        in_think = False
         finally:
             reader_task.cancel()
             try:
